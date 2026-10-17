@@ -5,9 +5,15 @@ export class Todo {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({length: 200})
+  @Column({ length: 200 })
   title: string;
 
   @Column({ default: 'TODO' })
   status: string;
+
+  @Column({ default: false })
+  starred: boolean;
+
+  @Column({ type: 'int', default: 0 })
+  position: number;
 }
