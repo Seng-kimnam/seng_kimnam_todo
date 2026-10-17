@@ -1,15 +1,13 @@
 import { useState } from "react";
-import type { TodoObject } from "@/pages/TodoPage";
+import type { Todo } from "@/api/todos";
 
 interface TodoListProps {
-  todos: TodoObject[];
-  onToggleTodo?: (id: number) => void;
-  onDeleteTodo?: (id: number) => void;
-  onEditTodo?: (id: number, text: string) => void;
-  onBulkDelete?: (ids: number[]) => void;
-  onBulkSetStatus?: (ids: number[], isCompleted: boolean) => void;
-  onReorder?: (ordered: TodoObject[]) => void;
-  onTogglePriority?: (id: number) => void;
+  todos: Todo[];
+  onToggleTodo: (id: number) => void;
+  onDeleteTodo: (id: number) => void;
+  onEditTodo: (id: number, title: string) => void;
+  onBulkDelete: (ids: number[]) => void;
+  onBulkSetStatus: (ids: number[], isCompleted: boolean) => void;
 }
 
 const TodoList = ({
@@ -19,52 +17,16 @@ const TodoList = ({
   onEditTodo,
   onBulkDelete,
   onBulkSetStatus,
-  onReorder,
-  onTogglePriority,
 }: TodoListProps) => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [draggedId, setDraggedId] = useState<number | null>(null);
-  const [dragOverId, setDragOverId] = useState<number | null>(null);
 
   const selected = selectedIds.filter((id) => todos.some((t) => t.id === id));
 
-  function clearDrag() {
-    setDraggedId(null);
-    setDragOverId(null);
-  }
-
-  function handleDragStart(e: React.DragEvent<HTMLDivElement>, id: number) {
-    setDraggedId(id);
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", String(id));
-  }
-
-  function handleDragOver(e: React.DragEvent<HTMLDivElement>, id: number) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    if (id !== draggedId) setDragOverId(id);
-  }
-
-  function handleDrop(e: React.DragEvent<HTMLDivElement>, targetId: number) {
-    e.preventDefault();
-    if (draggedId !== null && draggedId !== targetId) {
-      const reordered = [...todos];
-      const from = reordered.findIndex((t) => t.id === draggedId);
-      const to = reordered.findIndex((t) => t.id === targetId);
-      if (from !== -1 && to !== -1) {
-        const [moved] = reordered.splice(from, 1);
-        reordered.splice(to, 0, moved);
-        onReorder?.(reordered);
-      }
-    }
-    clearDrag();
-  }
-
-  function startEditing(todo: TodoObject) {
+  function startEditing(todo: Todo) {
     setEditingId(todo.id);
-    setEditText(todo.text);
+    setEditText(todo.title);
   }
 
   function cancelEditing() {
@@ -132,7 +94,6 @@ const TodoList = ({
 
   return (
     <div className="mt-4">
-      {/* Select all + bulk actions */}
       <div className="flex items-center justify-between gap-3 mb-3 px-1">
         <label className="flex items-center gap-2 text-xs font-medium text-slate-500 cursor-pointer select-none">
           <input
@@ -150,7 +111,6 @@ const TodoList = ({
         )}
       </div>
 
-      {/* Bulk action bar */}
       {selected.length > 0 && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 mb-3 rounded-2xl bg-blue-50 border border-blue-200">
           <span className="text-sm font-semibold text-blue-700">
@@ -193,52 +153,19 @@ const TodoList = ({
         {todos.map((todo) => {
           const isEditing = editingId === todo.id;
           const isSelected = selected.includes(todo.id);
+          const isCompleted = todo.status === "DONE";
 
           return (
             <div
               key={todo.id}
-              draggable={!isEditing && !!onReorder}
-              onDragStart={(e) => handleDragStart(e, todo.id)}
-              onDragOver={(e) => handleDragOver(e, todo.id)}
-              onDrop={(e) => handleDrop(e, todo.id)}
-              onDragEnd={clearDrag}
-              onClick={() => !isEditing && onToggleTodo && onToggleTodo(todo.id)}
+              onClick={() => !isEditing && onToggleTodo(todo.id)}
               className={`group flex items-center justify-between p-4 rounded-2xl border bg-white transition-all duration-200 ${
-                draggedId === todo.id ? "opacity-40" : ""
-              } ${
-                dragOverId === todo.id
-                  ? "border-blue-400 ring-2 ring-blue-500/20"
-                  : isSelected
-                    ? "border-blue-300 ring-2 ring-blue-500/20"
-                    : todo.isPriority
-                      ? "border-amber-300 bg-amber-50/40 hover:border-amber-400"
-                      : "border-slate-200 hover:border-blue-200"
+                isSelected
+                  ? "border-blue-300 ring-2 ring-blue-500/20"
+                  : "border-slate-200 hover:border-blue-200"
               } ${isEditing ? "cursor-default" : "cursor-pointer"}`}
             >
-              {/* Left section: Drag handle, Selection, Checkbox & Text */}
               <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                {onReorder && (
-                  <span
-                    aria-hidden="true"
-                    title="Drag to reorder"
-                    className="cursor-grab active:cursor-grabbing text-slate-300 group-hover:text-slate-500 transition-colors shrink-0"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M8.25 6.75h.008v.008H8.25V6.75zm0 5.25h.008v.008H8.25V12zm0 5.25h.008v.008H8.25v-.008zM15.75 6.75h.008v.008h-.008V6.75zm0 5.25h.008v.008h-.008V12zm0 5.25h.008v.008h-.008v-.008z"
-                      />
-                    </svg>
-                  </span>
-                )}
-
                 <input
                   type="checkbox"
                   aria-label="Select task"
@@ -251,21 +178,19 @@ const TodoList = ({
 
                 <button
                   type="button"
-                  aria-label={
-                    todo.isCompleted ? "Mark incomplete" : "Mark complete"
-                  }
+                  aria-label={isCompleted ? "Mark incomplete" : "Mark complete"}
                   disabled={isEditing}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (onToggleTodo) onToggleTodo(todo.id);
+                    onToggleTodo(todo.id);
                   }}
                   className={`w-6 h-6 cursor-pointer rounded-lg flex items-center justify-center transition-all duration-150 shrink-0 ${
-                    todo.isCompleted
+                    isCompleted
                       ? "bg-blue-600 text-white"
                       : "border-2 border-slate-300 group-hover:border-blue-400 bg-white"
                   }`}
                 >
-                  {todo.isCompleted && (
+                  {isCompleted && (
                     <svg
                       className="w-4 h-4 stroke-3"
                       fill="none"
@@ -301,71 +226,26 @@ const TodoList = ({
                   ) : (
                     <p
                       className={`text-sm sm:text-base wrap-text transition-all duration-150 select-none ${
-                        todo.isCompleted
+                        isCompleted
                           ? "line-through text-slate-400"
                           : "text-slate-700"
                       }`}
                     >
-                      {todo.text}
+                      {todo.title}
                     </p>
                   )}
                 </div>
               </div>
 
-              {/* Right section: Priority, Badge & Actions */}
               <div className="flex items-center gap-2.5 shrink-0 ml-3">
-                {onTogglePriority && (
-                  <button
-                    type="button"
-                    aria-label={
-                      todo.isPriority ? "Remove priority" : "Mark as priority"
-                    }
-                    title={
-                      todo.isPriority ? "Remove priority" : "Mark as priority"
-                    }
-                    disabled={isEditing}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTogglePriority(todo.id);
-                    }}
-                    className={`p-1.5 rounded-lg transition-all duration-150 shrink-0 ${
-                      todo.isPriority
-                        ? "text-amber-500 hover:bg-amber-50"
-                        : "text-slate-300 hover:text-amber-500 hover:bg-slate-100"
-                    }`}
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      viewBox="0 0 24 24"
-                      fill={todo.isPriority ? "currentColor" : "none"}
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.563.563 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"
-                      />
-                    </svg>
-                  </button>
-                )}
-
-                {todo.isPriority && (
-                  <span
-                    className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200"
-                  >
-                    Priority
-                  </span>
-                )}
-
                 <span
                   className={`hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider ${
-                    todo.isCompleted
+                    isCompleted
                       ? "bg-green-100 text-green-700 border border-green-200"
                       : "bg-blue-100 text-blue-700 border border-blue-200"
                   }`}
                 >
-                  {todo.isCompleted ? "Done" : "In Progress"}
+                  {isCompleted ? "Done" : "In Progress"}
                 </span>
 
                 {isEditing ? (
@@ -419,57 +299,53 @@ const TodoList = ({
                   </>
                 ) : (
                   <>
-                    {onEditTodo && (
-                      <button
-                        type="button"
-                        aria-label="Edit task"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          startEditing(todo);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-2 rounded-xl text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all duration-150"
+                    <button
+                      type="button"
+                      aria-label="Edit task"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEditing(todo);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-2 rounded-xl text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all duration-150"
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="2"
                       >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zM19.5 7.125L16.875 4.5"
-                          />
-                        </svg>
-                      </button>
-                    )}
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zM19.5 7.125L16.875 4.5"
+                        />
+                      </svg>
+                    </button>
 
-                    {onDeleteTodo && (
-                      <button
-                        type="button"
-                        aria-label="Delete task"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteTodo(todo.id);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-2 rounded-xl text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all duration-150"
+                    <button
+                      type="button"
+                      aria-label="Delete task"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteTodo(todo.id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-2 rounded-xl text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all duration-150"
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="2"
                       >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
-                          />
-                        </svg>
-                      </button>
-                    )}
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+                        />
+                      </svg>
+                    </button>
                   </>
                 )}
               </div>

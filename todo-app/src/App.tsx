@@ -3,10 +3,6 @@ import "./App.css";
 import TodoPage from "./pages/TodoPage";
 import UserDetailPage from "./pages/UserDetailPage";
 import NavBar from "./components/NavBar";
-import ProtectedRoute from "./components/ProtectedRoute";
-import SignInForm from "./auth/SignInForm";
-import RegisterForm from "./auth/RegisterForm";
-import ForgetPasswordForm from "./auth/ForgetPasswordForm";
 
 function App() {
   return (
@@ -16,14 +12,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/todos" replace />} />
 
-          <Route path="/sign-in" element={<SignInForm />} />
-          <Route path="/register" element={<RegisterForm />} />
-          <Route path="/forgot-password" element={<ForgetPasswordForm />} />
-
-          <Route element={<ProtectedRoute />}>
-            <Route path="/todos" element={<TodoPage />} />
-            <Route path="/profile" element={<UserDetailPage />} />
-          </Route>
+          <Route path="/todos" element={<TodoPage />} />
+          <Route path="/profile" element={<UserDetailPage />} />
 
           <Route
             path="*"

@@ -1,156 +1,146 @@
 import AddTodo from "@/components/AddTodo";
 import FilterBar, { type FilterType } from "@/components/FilterBar";
 import TodoList from "@/components/TodoList";
-import { useAuth } from "@/context/authContext";
+import {
+  createTodo,
+  deleteTodo,
+  getTodos,
+  updateTodo,
+  type Todo,
+  type TodoStatus,
+} from "@/api/todos";
+import { ApiError } from "@/api/client";
 import { useEffect, useState } from "react";
 
-export interface TodoObject {
-  id: number;
-  text: string;
-  isCompleted: boolean;
-  isPriority?: boolean;
-}
-
-const initialTodos: TodoObject[] = [
-  {
-    id: 1,
-    text: "Install Node",
-    isCompleted: true,
-  },
-  {
-    id: 2,
-    text: "Learn React state management",
-    isCompleted: false,
-  },
-  {
-    id: 3,
-    text: "Create React components",
-    isCompleted: true,
-  },
-  {
-    id: 4,
-    text: "Practice props and callbacks",
-    isCompleted: false,
-  },
-  {
-    id: 5,
-    text: "Learn useEffect",
-    isCompleted: false,
-  },
-  {
-    id: 6,
-    text: "Build a Todo application",
-    isCompleted: true,
-  },
-  {
-    id: 7,
-    text: "Practice TypeScript with React",
-    isCompleted: false,
-  },
-];
-
 const TodoPage = () => {
-  const { user } = useAuth();
-  const storageKey = user ? `todo_app_todos_${user.id}` : null;
-
-  const [todos, setTodos] = useState<TodoObject[]>(() => {
-    if (!storageKey) return initialTodos;
-    try {
-      const raw = localStorage.getItem(storageKey);
-      return raw ? (JSON.parse(raw) as TodoObject[]) : initialTodos;
-    } catch {
-      return initialTodos;
-    }
-  });
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [newTodoText, setNewTodoText] = useState<string>("");
   const [filter, setFilter] = useState<FilterType>("all");
   const [letter, setLetter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  
+
   useEffect(() => {
-    if (!storageKey) return;
-    localStorage.setItem(storageKey, JSON.stringify(todos));
-  }, [todos, storageKey]);
-
-  function addTodo(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!newTodoText.trim()) return;
-
-    const newTodo: TodoObject = {
-      id: Date.now(),
-      text: newTodoText.trim(),
-      isCompleted: false,
-      isPriority: false,
+    let active = true;
+    const fetchData = async () => {
+      try {
+        if (!active) return;
+        setLoading(true);
+        const data = await getTodos();
+        if (active) {
+          setTodos(data);
+          setError(null);
+        }
+      } catch (err) {
+        if (active) {
+          setError(err instanceof ApiError ? err.message : "Something went wrong.");
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
     };
-    setTodos([newTodo, ...todos]);
-    setNewTodoText("");
+    void fetchData();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function reportError(err: unknown) {
+    setError(err instanceof ApiError ? err.message : "Something went wrong.");
   }
 
-  function toggleTodo(id: number) {
-    setTodos(
-      todos.map((todo) =>
-        todo.id === id ? { ...todo, isCompleted: !todo.isCompleted } : todo,
-      ),
-    );
+  async function addTodo(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const title = newTodoText.trim();
+    if (!title) return;
+    try {
+      const created = await createTodo(title);
+      setTodos((prev) => [created, ...prev]);
+      setNewTodoText("");
+    } catch (err) {
+      reportError(err);
+    }
   }
 
-  function deleteTodo(id: number) {
-    setTodos(todos.filter((todo) => todo.id !== id));
+  async function toggleTodo(id: number) {
+    const todo = todos.find((t) => t.id === id);
+    if (!todo) return;
+    const status: TodoStatus = todo.status === "DONE" ? "TODO" : "DONE";
+    try {
+      const updated = await updateTodo(id, { status });
+      setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    } catch (err) {
+      reportError(err);
+    }
   }
 
-  function editTodo(id: number, text: string) {
-    const trimmed = text.trim();
+  async function editTodo(id: number, title: string) {
+    const trimmed = title.trim();
     if (!trimmed) return;
-    setTodos(
-      todos.map((todo) => (todo.id === id ? { ...todo, text: trimmed } : todo)),
-    );
+    try {
+      const updated = await updateTodo(id, { title: trimmed });
+      setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    } catch (err) {
+      reportError(err);
+    }
   }
 
-  function togglePriority(id: number) {
-    setTodos(
-      todos.map((todo) =>
-        todo.id === id ? { ...todo, isPriority: !todo.isPriority } : todo,
-      ),
-    );
+  async function removeTodo(id: number) {
+    try {
+      await deleteTodo(id);
+      setTodos((prev) => prev.filter((t) => t.id !== id));
+    } catch (err) {
+      reportError(err);
+    }
   }
 
-  function handleFilterByComplete() {
-    setFilter("completed");
+  async function bulkDeleteTodos(ids: number[]) {
+    try {
+      await Promise.all(ids.map((id) => deleteTodo(id)));
+      setTodos((prev) => prev.filter((t) => !ids.includes(t.id)));
+    } catch (err) {
+      reportError(err);
+    }
+  }
+
+  async function bulkSetStatus(ids: number[], isCompleted: boolean) {
+    const status: TodoStatus = isCompleted ? "DONE" : "TODO";
+    try {
+      const results = await Promise.all(
+        ids.map((id) => updateTodo(id, { status })),
+      );
+      const map = new Map<number, Todo>();
+      for (const t of results) {
+        map.set(t.id, t);
+      }
+      setTodos((prev) => prev.map((t) => map.get(t.id) ?? t));
+    } catch (err) {
+      reportError(err);
+    }
   }
 
   function clearCompleted() {
-    setTodos(todos.filter((todo) => !todo.isCompleted));
+    const ids = todos.filter((t) => t.status === "DONE").map((t) => t.id);
+    if (ids.length) void bulkDeleteTodos(ids);
   }
 
-  function bulkDeleteTodos(ids: number[]) {
-    setTodos(todos.filter((todo) => !ids.includes(todo.id)));
-  }
-
-  function bulkSetStatus(ids: number[], isCompleted: boolean) {
-    setTodos(
-      todos.map((todo) =>
-        ids.includes(todo.id) ? { ...todo, isCompleted } : todo,
-      ),
-    );
-  }
-
-  function reorderTodos(orderedVisible: TodoObject[]) {
-    const visibleIds = new Set(orderedVisible.map((t) => t.id));
-    const queue = [...orderedVisible];
-    setTodos(todos.map((todo) => (visibleIds.has(todo.id) ? queue.shift()! : todo)));
-  }
-
-  // Filter calculations
   const totalCount = todos.length;
-  const completedCount = todos.filter((t) => t.isCompleted).length;
+  const completedCount = todos.filter((t) => t.status === "DONE").length;
   const activeCount = totalCount - completedCount;
   const completionPercentage =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
+  const query = searchQuery.trim().toLowerCase();
   const filteredTodos = todos.filter((todo) => {
-    if (filter === "active" && todo.isCompleted) return false;
-    if (filter === "completed" && !todo.isCompleted) return false;
-    if (letter && todo.text.trim().charAt(0).toUpperCase() !== letter) {
+    if (filter === "active" && todo.status === "DONE") return false;
+    if (filter === "completed" && todo.status !== "DONE") return false;
+    if (letter && todo.title.trim().charAt(0).toUpperCase() !== letter) {
+      return false;
+    }
+    if (query && !todo.title.toLowerCase().includes(query)) {
       return false;
     }
     return true;
@@ -159,7 +149,7 @@ const TodoPage = () => {
   const availableLetters = [
     ...new Set(
       todos
-        .map((todo) => todo.text.trim().charAt(0).toUpperCase())
+        .map((todo) => todo.title.trim().charAt(0).toUpperCase())
         .filter((c) => /[A-Z]/.test(c)),
     ),
   ];
@@ -175,14 +165,13 @@ const TodoPage = () => {
                 Task Manager
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-                {user ? `${user.username}'s Tasks` : "Stay Productive Today"}
+                Your Tasks
               </h1>
               <p className="text-sm text-slate-500 mt-1">
                 Manage your priorities and build momentum one task at a time.
               </p>
             </div>
 
-            {/* Quick Stat Pill */}
             <div className="flex items-center gap-4 bg-slate-50 border text-slate-900 border-slate-200 rounded-2xl p-3.5 px-4 self-start sm:self-auto">
               <div className="text-center">
                 <div className="text-xl font-bold ">
@@ -204,7 +193,6 @@ const TodoPage = () => {
             </div>
           </div>
 
-          {/* Progress Bar (Single solid blue color, no gradient) */}
           <div className="mt-6">
             <div className="flex justify-between text-xs  mb-1.5 font-medium">
               <span className="text-slate-600">Task Completion</span>
@@ -221,16 +209,26 @@ const TodoPage = () => {
           </div>
         </div>
 
-        {/* Add Todo Input */}
+        {error && (
+          <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {loading && (
+          <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-sm text-slate-600">
+            Loading tasks...
+          </div>
+        )}
+
         <AddTodo
           newTodoText={newTodoText}
           setNewTodoText={setNewTodoText}
           handleAddTodoItem={addTodo}
         />
 
-        {/* Filter and Action Bar */}
         <FilterBar
-          onFilterByComplete={handleFilterByComplete}
+          onFilterByComplete={() => setFilter("completed")}
           currentFilter={filter}
           onFilterChange={setFilter}
           counts={{
@@ -244,7 +242,6 @@ const TodoPage = () => {
           availableLetters={availableLetters}
         />
 
-        {/* Search Input */}
         <div className="mt-4">
           <input
             type="text"
@@ -255,16 +252,13 @@ const TodoPage = () => {
           />
         </div>
 
-        {/* List of Tasks */}
         <TodoList
           todos={filteredTodos}
           onToggleTodo={toggleTodo}
-          onDeleteTodo={deleteTodo}
+          onDeleteTodo={removeTodo}
           onEditTodo={editTodo}
           onBulkDelete={bulkDeleteTodos}
           onBulkSetStatus={bulkSetStatus}
-          onReorder={reorderTodos}
-          onTogglePriority={togglePriority}
         />
       </div>
     </div>
