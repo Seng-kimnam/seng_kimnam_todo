@@ -4,25 +4,63 @@ import type { Todo } from "@/api/todos";
 interface TodoListProps {
   todos: Todo[];
   onToggleTodo: (id: number) => void;
+  onToggleStar?: (id: number) => void;
   onDeleteTodo: (id: number) => void;
   onEditTodo: (id: number, title: string) => void;
   onBulkDelete: (ids: number[]) => void;
   onBulkSetStatus: (ids: number[], isCompleted: boolean) => void;
+  onReorder?: (ordered: Todo[]) => void;
 }
 
 const TodoList = ({
   todos,
   onToggleTodo,
+  onToggleStar,
   onDeleteTodo,
   onEditTodo,
   onBulkDelete,
   onBulkSetStatus,
+  onReorder,
 }: TodoListProps) => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [draggedId, setDraggedId] = useState<number | null>(null);
+  const [dragOverId, setDragOverId] = useState<number | null>(null);
 
   const selected = selectedIds.filter((id) => todos.some((t) => t.id === id));
+
+  function clearDrag() {
+    setDraggedId(null);
+    setDragOverId(null);
+  }
+
+  function handleDragStart(e: React.DragEvent<HTMLDivElement>, id: number) {
+    setDraggedId(id);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(id));
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>, id: number) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (id !== draggedId) setDragOverId(id);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>, targetId: number) {
+    e.preventDefault();
+    if (draggedId !== null && draggedId !== targetId && onReorder) {
+      const reordered = [...todos];
+      const from = reordered.findIndex((t) => t.id === draggedId);
+      const to = reordered.findIndex((t) => t.id === targetId);
+      if (from !== -1 && to !== -1) {
+        const [moved] = reordered.splice(from, 1);
+        reordered.splice(to, 0, moved);
+        onReorder(reordered);
+      }
+    }
+    clearDrag();
+  }
 
   function startEditing(todo: Todo) {
     setEditingId(todo.id);
@@ -158,14 +196,47 @@ const TodoList = ({
           return (
             <div
               key={todo.id}
+              draggable={!isEditing && !!onReorder}
+              onDragStart={(e) => handleDragStart(e, todo.id)}
+              onDragOver={(e) => handleDragOver(e, todo.id)}
+              onDrop={(e) => handleDrop(e, todo.id)}
+              onDragEnd={clearDrag}
               onClick={() => !isEditing && onToggleTodo(todo.id)}
               className={`group flex items-center justify-between p-4 rounded-2xl border bg-white transition-all duration-200 ${
-                isSelected
-                  ? "border-blue-300 ring-2 ring-blue-500/20"
-                  : "border-slate-200 hover:border-blue-200"
+                draggedId === todo.id ? "opacity-40" : ""
+              } ${
+                dragOverId === todo.id
+                  ? "border-blue-400 ring-2 ring-blue-500/20"
+                  : isSelected
+                    ? "border-blue-300 ring-2 ring-blue-500/20"
+                    : todo.starred
+                      ? "border-amber-300 bg-amber-50/40 hover:border-amber-400"
+                      : "border-slate-200 hover:border-blue-200"
               } ${isEditing ? "cursor-default" : "cursor-pointer"}`}
             >
               <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                {onReorder && (
+                  <span
+                    aria-hidden="true"
+                    title="Drag to reorder"
+                    className="cursor-grab active:cursor-grabbing text-slate-300 group-hover:text-slate-500 transition-colors shrink-0"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M8.25 6.75h.008v.008H8.25V6.75zm0 5.25h.008v.008H8.25V12zm0 5.25h.008v.008H8.25v-.008zM15.75 6.75h.008v.008h-.008V6.75zm0 5.25h.008v.008h-.008V12zm0 5.25h.008v.008h-.008v-.008z"
+                      />
+                    </svg>
+                  </span>
+                )}
+
                 <input
                   type="checkbox"
                   aria-label="Select task"
@@ -238,6 +309,44 @@ const TodoList = ({
               </div>
 
               <div className="flex items-center gap-2.5 shrink-0 ml-3">
+                {onToggleStar && (
+                  <button
+                    type="button"
+                    aria-label={todo.starred ? "Unstar task" : "Star task"}
+                    title={todo.starred ? "Unstar" : "Star"}
+                    disabled={isEditing}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleStar(todo.id);
+                    }}
+                    className={`p-1.5 rounded-lg transition-all duration-150 shrink-0 ${
+                      todo.starred
+                        ? "text-amber-500 hover:bg-amber-50"
+                        : "text-slate-300 hover:text-amber-500 hover:bg-slate-100"
+                    }`}
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      viewBox="0 0 24 24"
+                      fill={todo.starred ? "currentColor" : "none"}
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.563.563 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"
+                      />
+                    </svg>
+                  </button>
+                )}
+
+                {todo.starred && (
+                  <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
+                    Starred
+                  </span>
+                )}
+
                 <span
                   className={`hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider ${
                     isCompleted

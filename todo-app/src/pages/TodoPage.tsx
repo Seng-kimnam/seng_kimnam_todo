@@ -2,9 +2,11 @@ import AddTodo from "@/components/AddTodo";
 import FilterBar, { type FilterType } from "@/components/FilterBar";
 import TodoList from "@/components/TodoList";
 import {
+  bulkUpdateTodos,
   createTodo,
   deleteTodo,
   getTodos,
+  reorderTodos as apiReorderTodos,
   updateTodo,
   type Todo,
   type TodoStatus,
@@ -16,18 +18,27 @@ const TodoPage = () => {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [newTodoText, setNewTodoText] = useState<string>("");
+  const [newTodoText, setNewTodoText] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
-  const [letter, setLetter] = useState<string>("");
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [letter, setLetter] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Debounce the search input before sending ?q= to the server.
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(searchInput.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   useEffect(() => {
     let active = true;
-    const fetchData = async () => {
+    const load = async () => {
       try {
         if (!active) return;
         setLoading(true);
-        const data = await getTodos();
+        const data = await getTodos(
+          searchQuery ? { q: searchQuery } : undefined,
+        );
         if (active) {
           setTodos(data);
           setError(null);
@@ -42,11 +53,11 @@ const TodoPage = () => {
         }
       }
     };
-    void fetchData();
+    void load();
     return () => {
       active = false;
     };
-  }, []);
+  }, [searchQuery]);
 
   function reportError(err: unknown) {
     setError(err instanceof ApiError ? err.message : "Something went wrong.");
@@ -71,6 +82,17 @@ const TodoPage = () => {
     const status: TodoStatus = todo.status === "DONE" ? "TODO" : "DONE";
     try {
       const updated = await updateTodo(id, { status });
+      setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    } catch (err) {
+      reportError(err);
+    }
+  }
+
+  async function toggleStar(id: number) {
+    const todo = todos.find((t) => t.id === id);
+    if (!todo) return;
+    try {
+      const updated = await updateTodo(id, { starred: !todo.starred });
       setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
     } catch (err) {
       reportError(err);
@@ -109,11 +131,9 @@ const TodoPage = () => {
   async function bulkSetStatus(ids: number[], isCompleted: boolean) {
     const status: TodoStatus = isCompleted ? "DONE" : "TODO";
     try {
-      const results = await Promise.all(
-        ids.map((id) => updateTodo(id, { status })),
-      );
+      const updated = await bulkUpdateTodos(ids, status);
       const map = new Map<number, Todo>();
-      for (const t of results) {
+      for (const t of updated) {
         map.set(t.id, t);
       }
       setTodos((prev) => prev.map((t) => map.get(t.id) ?? t));
@@ -127,20 +147,25 @@ const TodoPage = () => {
     if (ids.length) void bulkDeleteTodos(ids);
   }
 
+  function reorderVisible(orderedVisible: Todo[]) {
+    const visibleIds = new Set(orderedVisible.map((t) => t.id));
+    const queue = [...orderedVisible];
+    setTodos((prev) =>
+      prev.map((t) => (visibleIds.has(t.id) ? queue.shift()! : t)),
+    );
+    void apiReorderTodos(orderedVisible.map((t) => t.id)).catch(reportError);
+  }
+
   const totalCount = todos.length;
   const completedCount = todos.filter((t) => t.status === "DONE").length;
   const activeCount = totalCount - completedCount;
   const completionPercentage =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-  const query = searchQuery.trim().toLowerCase();
   const filteredTodos = todos.filter((todo) => {
     if (filter === "active" && todo.status === "DONE") return false;
     if (filter === "completed" && todo.status !== "DONE") return false;
     if (letter && todo.title.trim().charAt(0).toUpperCase() !== letter) {
-      return false;
-    }
-    if (query && !todo.title.toLowerCase().includes(query)) {
       return false;
     }
     return true;
@@ -245,20 +270,22 @@ const TodoPage = () => {
         <div className="mt-4">
           <input
             type="text"
-            placeholder="Search tasks..."
+            placeholder="Search tasks by title..."
             className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
 
         <TodoList
           todos={filteredTodos}
           onToggleTodo={toggleTodo}
+          onToggleStar={toggleStar}
           onDeleteTodo={removeTodo}
           onEditTodo={editTodo}
           onBulkDelete={bulkDeleteTodos}
           onBulkSetStatus={bulkSetStatus}
+          onReorder={reorderVisible}
         />
       </div>
     </div>
