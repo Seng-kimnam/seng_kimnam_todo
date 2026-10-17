@@ -1,11 +1,15 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+
+export const TODO_STATUSES = ['TODO', 'DONE'] as const;
+export type TodoStatus = (typeof TODO_STATUSES)[number];
 
 export class CreateTodoDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(200)
   title: string;
 
- 
   @IsOptional()
-  status?: string;
+  @IsIn(TODO_STATUSES)
+  status?: TodoStatus;
 }
